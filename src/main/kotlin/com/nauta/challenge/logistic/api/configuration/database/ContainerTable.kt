@@ -17,12 +17,4 @@ object ContainerTable : IdTable<String>(CONTAINER_TABLE) {
     val code = varchar(CONTAINER_CODE, 50)
 
     val booking = reference(BOOKING_ID, BookingTable)
-
-    val client = reference(CLIENT_ID, BookingTable)
-
-    init {
-        index(true, code, booking)
-
-        index(false, client)
-    }
 }

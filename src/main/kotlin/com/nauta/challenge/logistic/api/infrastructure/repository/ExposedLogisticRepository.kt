@@ -10,6 +10,7 @@ import com.nauta.challenge.logistic.api.core.exception.LogisticConflictException
 import mu.KotlinLogging
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.springframework.stereotype.Repository
 import java.util.*
@@ -25,6 +26,8 @@ class ExposedLogisticRepository(
         logger.info { "Saving logistic for booking: ${logistic.booking} in database" }
 
         return transaction(logisticDatabase) {
+
+            insertClientIfNotExists(logistic.clientId)
 
             val bookingId = saveBooking(logistic)
 
@@ -58,13 +61,14 @@ class ExposedLogisticRepository(
     override fun findContainersByClientId(clientId: UUID): List<Container> {
         logger.info { "Searching containers for client ID: $clientId in database" }
         return transaction(logisticDatabase) {
-            ContainerTable
-                .select(ContainerTable.id, ContainerTable.code, ContainerTable.client)
-                .where { ContainerTable.client eq clientId.toString() }
+            ClientContainerTable
+                .join(ContainerTable, JoinType.INNER, ClientContainerTable.container, ContainerTable.id)
+                .select( ContainerTable.id, ClientContainerTable.client, ContainerTable.code )
+                .where { ClientContainerTable.client eq clientId.toString() }
                 .map { row ->
                     Container(
                         containerId = UUID.fromString(row[ContainerTable.id].value),
-                        container = row[ContainerTable.code],
+                        container = row[ContainerTable.code]
                     )
                 }
         }
@@ -158,7 +162,6 @@ class ExposedLogisticRepository(
                 val newId = ContainerTable.insertAndGetId {
                     it[this.code] = container.container
                     it[this.booking] = bookingId
-                    it[this.client] = logistic.clientId.toString()
                 }.value
 
                 logger.info { "Inserted container '${container.container}' with ID: '$newId'" }
@@ -180,7 +183,25 @@ class ExposedLogisticRepository(
             } else {
                 logger.debug { "Container '${container.container}' (ID: $containerId) already linked to booking '$bookingId'" }
             }
+
+
+            insertClientContainerIfNotExists(logistic.clientId.toString(), containerId)
         }
+    }
+
+    private fun insertClientIfNotExists(clientId: UUID) {
+        ClientTable.insertIgnore {
+            it[id] = clientId.toString()
+        }
+        logger.debug { "Ensured client with ID: '$clientId' exists" }
+    }
+
+    private fun insertClientContainerIfNotExists(clientId: String, containerId: String) {
+        ClientContainerTable.insertIgnore {
+            it[client] = EntityID(clientId, ClientTable)
+            it[container] = EntityID(containerId, ContainerTable)
+        }
+        logger.debug { "Ensured relation client '$clientId' <-> container '$containerId' exists" }
     }
 
     private fun saveOrdersAndInvoices(bookingId: BookingId, logistic: Logistic) {
@@ -279,7 +300,3 @@ class ExposedLogisticRepository(
         val logger = KotlinLogging.logger {}
     }
 }
-
-
-
-

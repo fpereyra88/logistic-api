@@ -27,11 +27,13 @@ class ExposedConfig(
 
         transaction(db) {
             SchemaUtils.create(
+                ClientTable,
                 BookingTable,
                 ContainerTable,
                 OrderTable,
                 InvoiceTable,
-                BookingContainerTable)
+                BookingContainerTable,
+                ClientContainerTable)
         }
 
         return db
